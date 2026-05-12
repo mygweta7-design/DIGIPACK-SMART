@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DIGIPACK SMART FLOOR</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#111827">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-950 text-white min-h-screen">
+  <div id="app"></div>
+
+  <script>
+    const SUPABASE_URL = "https://elxfkcwyfmgqysfcfhwy.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_WBpyhdYmnDFaphP4AM5QJA_KwGUXv3_";
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let currentEmployee = null;
+    let currentJob = null;
+    let labelImages = [];
+
+    const qualityFields = {
+      laminate_direction: "",
+      raw_material_match: "",
+      thickness: "",
+      width: "",
+      pitch: "",
+      print_cleanliness: "",
+      material_color: "",
+      lamination_strength: "",
+      sealing_strength: "",
+      comments: ""
+    };
+
+    function renderLogin() {
+      document.getElementById("app").innerHTML = `
+        <main class="min-h-screen flex items-center justify-center p-4">
+          <section class="w-full max-w-md bg-gray-900 border border-gray-800 rounded-3xl p-6 shadow-2xl">
+            <h1 class="text-3xl font-bold mb-2">DIGIPACK SMART FLOOR</h1>
+            <p class="text-gray-400 mb-6">למינציה 1 — כניסת עובד</p>
+
+            <label class="block mb-2">עובד</label>
+            <select id="employee" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700 mb-4">
+              <option value="">בחר עובד</option>
+            </select>
+
+            <label class="block mb-2">סיסמה</label>
+            <input id="password" type="password" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700 mb-6" placeholder="הכנס סיסמה">
+
+            <button onclick="login()" class="w-full bg-blue-600 p-4 rounded-2xl font-bold text-lg">כניסה</button>
+            <p id="loginError" class="text-red-400 mt-4"></p>
+          </section>
+        </main>
+      `;
+      loadEmployees();
+    }
+
+    async function loadEmployees() {
+      const { data, error } = await client.from("employees").select("*").eq("active", true).order("name");
+      const select = document.getElementById("employee");
+      if (error) {
+        document.getElementById("loginError").innerText = "שגיאה בטעינת עובדים";
+        return;
+      }
+      data.forEach(emp => {
+        const option = document.createElement("option");
+        option.value = emp.id;
+        option.textContent = emp.name;
+        option.dataset.password = emp.password;
+        option.dataset.role = emp.role;
+        select.appendChild(option);
+      });
+    }
+
+    function login() {
+      const select = document.getElementById("employee");
+      const selected = select.options[select.selectedIndex];
+      const password = document.getElementById("password").value;
+      if (!selected.value) return showLoginError("בחר עובד");
+      if (password !== selected.dataset.password) return showLoginError("סיסמה שגויה");
+
+      currentEmployee = {
+        id: selected.value,
+        name: selected.textContent,
+        role: selected.dataset.role
+      };
+      renderHome();
+    }
+
+    function showLoginError(msg) {
+      document.getElementById("loginError").innerText = msg;
+    }
+
+    function renderHome() {
+      document.getElementById("app").innerHTML = `
+        <main class="p-4 pb-24 max-w-5xl mx-auto">
+          <header class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
+            <h1 class="text-2xl font-bold">DIGIPACK SMART FLOOR</h1>
+            <p class="text-gray-400">עובד: ${currentEmployee.name} | למינציה 1</p>
+          </header>
+
+          <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
+            <h2 class="text-xl font-bold mb-4">פתיחת עבודת למינציה</h2>
+
+            <label class="block mb-2">מספר הזמנה</label>
+            <input id="orderNumber" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700 mb-4" placeholder="לדוגמה: 0521-26">
+
+            <label class="block mb-2">מספר אצווה</label>
+            <input id="batchNumber" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700 mb-4" placeholder="הקלד מספר אצווה">
+
+            <label class="block mb-2">צילום תווית חומר גלם</label>
+            <input id="labelPhoto" type="file" accept="image/*" capture="environment" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700 mb-4">
+
+            <button onclick="startJob()" class="w-full bg-green-600 p-4 rounded-2xl font-bold text-lg">התחל עבודה</button>
+            <p id="homeMsg" class="mt-4 text-yellow-300"></p>
+          </section>
+
+          <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5">
+            <h2 class="text-xl font-bold mb-4">מסך מנהל</h2>
+            <button onclick="loadManager()" class="w-full bg-gray-700 p-4 rounded-2xl font-bold">הצג עבודות אחרונות</button>
+            <div id="managerList" class="mt-4 space-y-3"></div>
+          </section>
+        </main>
+      `;
+    }
+
+    async function startJob() {
+      const orderNumber = document.getElementById("orderNumber").value.trim();
+      const batchNumber = document.getElementById("batchNumber").value.trim();
+      const file = document.getElementById("labelPhoto").files[0];
+
+      if (!orderNumber) return setMsg("חובה להזין מספר הזמנה");
+      if (!batchNumber) return setMsg("חובה להזין מספר אצווה");
+      if (!file) return setMsg("חובה לצלם תווית חומר גלם");
+
+      const { data: job, error } = await client.from("jobs").insert({
+        order_number: orderNumber,
+        employee_id: currentEmployee.id,
+        batch_number: batchNumber,
+        start_time: new Date().toISOString(),
+        status: "open"
+      }).select().single();
+
+      if (error) return setMsg("שגיאה ביצירת עבודה: " + error.message);
+
+      currentJob = job;
+      await saveLabel(file, job.id, batchNumber, "start");
+      renderActiveJob();
+    }
+
+    async function saveLabel(file, jobId, batchNumber, labelType) {
+      const fileName = `${jobId}/${Date.now()}-${file.name}`;
+      const { error: uploadError } = await client.storage.from("labels").upload(fileName, file);
+      let imageUrl = "";
+      if (!uploadError) {
+        const { data } = client.storage.from("labels").getPublicUrl(fileName);
+        imageUrl = data.publicUrl;
+      }
+      await client.from("material_labels").insert({
+        job_id: jobId,
+        batch_number: batchNumber,
+        label_type: labelType,
+        image_url: imageUrl
+      });
+    }
+
+    function setMsg(msg) {
+      document.getElementById("homeMsg").innerText = msg;
+    }
+
+    function renderActiveJob() {
+      document.getElementById("app").innerHTML = `
+        <main class="p-4 pb-24 max-w-4xl mx-auto">
+          <header class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
+            <h1 class="text-2xl font-bold">עבודה פעילה</h1>
+            <p class="text-gray-400">הזמנה: ${currentJob.order_number} | אצווה: ${currentJob.batch_number}</p>
+          </header>
+
+          <section class="grid gap-4">
+            <div class="bg-green-900/40 border border-green-700 rounded-3xl p-5">
+              <h2 class="text-xl font-bold">למינציה 1 פעילה</h2>
+              <p class="text-gray-300 mt-2">שעת התחלה: ${new Date(currentJob.start_time).toLocaleTimeString("he-IL")}</p>
+            </div>
+
+            <div class="bg-gray-900 border border-gray-800 rounded-3xl p-5">
+              <h2 class="text-xl font-bold mb-4">טעינת גליל נוסף</h2>
+              <input id="extraLabelPhoto" type="file" accept="image/*" capture="environment" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700 mb-4">
+              <button onclick="addExtraRoll()" class="w-full bg-blue-600 p-4 rounded-2xl font-bold">צלם ושמור גליל נוסף</button>
+              <p id="activeMsg" class="mt-4 text-yellow-300"></p>
+            </div>
+
+            <button onclick="renderQuality()" class="w-full bg-orange-500 p-5 rounded-3xl text-xl font-bold">סיום עבודה ומילוי איכות</button>
+          </section>
+        </main>
+      `;
+    }
+
+    async function addExtraRoll() {
+      const file = document.getElementById("extraLabelPhoto").files[0];
+      if (!file) return document.getElementById("activeMsg").innerText = "בחר/צלם תווית";
+      await saveLabel(file, currentJob.id, currentJob.batch_number, "extra_roll");
+      document.getElementById("activeMsg").innerText = "גליל נוסף נשמר";
+    }
+
+    function renderQuality() {
+      document.getElementById("app").innerHTML = `
+        <main class="p-4 pb-24 max-w-4xl mx-auto">
+          <header class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
+            <h1 class="text-2xl font-bold">טופס איכות — למינציה</h1>
+            <p class="text-gray-400">חובה למלא את כל השדות לסגירת עבודה</p>
+          </header>
+
+          <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 space-y-4">
+            ${selectField("laminate_direction", "כיוון למינט", ["קריא", "לא קריא"])}
+            ${selectField("raw_material_match", "התאמת חו״ג לפק״ע", ["כן", "לא"])}
+            ${inputField("thickness", "עובי")}
+            ${inputField("width", "רוחב")}
+            ${inputField("pitch", "פסיעה")}
+            ${selectField("print_cleanliness", "ניקיון הדפסה", ["תקין", "לא תקין"])}
+            ${selectField("material_color", "חומר", ["שקוף", "לבן"])}
+            ${selectField("lamination_strength", "חוזק למינציה", ["תקין", "לא תקין"])}
+            ${selectField("sealing_strength", "חוזק הלחמה", ["תקין", "לא תקין"])}
+            <label class="block">הערות</label>
+            <textarea id="comments" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700"></textarea>
+
+            <button onclick="finishJob()" class="w-full bg-green-600 p-5 rounded-3xl text-xl font-bold">סיים ושמור עבודה</button>
+            <p id="qualityMsg" class="mt-4 text-yellow-300"></p>
+          </section>
+        </main>
+      `;
+    }
+
+    function selectField(id, label, options) {
+      return `
+        <div>
+          <label class="block mb-2">${label}</label>
+          <select id="${id}" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700">
+            <option value="">בחר</option>
+            ${options.map(o => `<option value="${o}">${o}</option>`).join("")}
+          </select>
+        </div>
+      `;
+    }
+
+    function inputField(id, label) {
+      return `
+        <div>
+          <label class="block mb-2">${label}</label>
+          <input id="${id}" type="number" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700">
+        </div>
+      `;
+    }
+
+    async function finishJob() {
+      const required = ["laminate_direction","raw_material_match","thickness","width","pitch","print_cleanliness","material_color","lamination_strength","sealing_strength"];
+      for (const id of required) {
+        if (!document.getElementById(id).value) {
+          document.getElementById("qualityMsg").innerText = "יש למלא את כל שדות האיכות";
+          return;
+        }
+      }
+
+      const payload = {
+        job_id: currentJob.id,
+        laminate_direction: document.getElementById("laminate_direction").value,
+        raw_material_match: document.getElementById("raw_material_match").value === "כן",
+        thickness: Number(document.getElementById("thickness").value),
+        width: Number(document.getElementById("width").value),
+        pitch: Number(document.getElementById("pitch").value),
+        print_cleanliness: document.getElementById("print_cleanliness").value,
+        material_color: document.getElementById("material_color").value,
+        lamination_strength: document.getElementById("lamination_strength").value,
+        sealing_strength: document.getElementById("sealing_strength").value,
+        comments: document.getElementById("comments").value,
+        approved: true
+      };
+
+      const { error: qError } = await client.from("lamination_quality").insert(payload);
+      if (qError) return document.getElementById("qualityMsg").innerText = "שגיאה בשמירת איכות: " + qError.message;
+
+      const { error: jError } = await client.from("jobs").update({
+        end_time: new Date().toISOString(),
+        status: "closed"
+      }).eq("id", currentJob.id);
+
+      if (jError) return document.getElementById("qualityMsg").innerText = "שגיאה בסגירת עבודה: " + jError.message;
+
+      document.getElementById("app").innerHTML = `
+        <main class="min-h-screen flex items-center justify-center p-4">
+          <section class="bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center max-w-md">
+            <h1 class="text-3xl font-bold text-green-400 mb-4">העבודה נסגרה בהצלחה</h1>
+            <p class="text-gray-300 mb-6">הנתונים נשמרו במערכת</p>
+            <button onclick="renderHome()" class="w-full bg-blue-600 p-4 rounded-2xl font-bold">פתח עבודה חדשה</button>
+          </section>
+        </main>
+      `;
+    }
+
+    async function loadManager() {
+      const { data, error } = await client
+        .from("jobs")
+        .select("*, employees(name)")
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      const box = document.getElementById("managerList");
+      if (error) {
+        box.innerHTML = `<p class="text-red-400">${error.message}</p>`;
+        return;
+      }
+
+      box.innerHTML = data.map(job => `
+        <div class="bg-gray-800 rounded-2xl p-4 border border-gray-700">
+          <b>הזמנה: ${job.order_number}</b>
+          <p>עובד: ${job.employees?.name || ""}</p>
+          <p>אצווה: ${job.batch_number || ""}</p>
+          <p>סטטוס: ${job.status}</p>
+        </div>
+      `).join("");
+    }
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/service-worker.js");
+    }
+
+    renderLogin();
+  </script>
+</body>
+</html>
