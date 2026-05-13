@@ -1,9 +1,6 @@
-self.addEventListener("install", event => {
-  event.waitUntil(
-    caches.open("digipack-v1").then(cache => cache.addAll(["/", "/index.html", "/manifest.json"]))
-  );
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open('digipack-v2').then(cache => cache.addAll(['/', '/index.html', '/manifest.json'])));
 });
-
-self.addEventListener("fetch", event => {
+self.addEventListener('fetch', event => {
   event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
 });
