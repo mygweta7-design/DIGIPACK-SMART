@@ -8,9 +8,11 @@
   <meta name="theme-color" content="#111827">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gray-950 text-white min-h-screen">
   <div id="app"></div>
+
   <script>
     const SUPABASE_URL = "https://elxfkcwyfmgqysfcfhwy.supabase.co";
     const SUPABASE_KEY = "sb_publishable_WBpyhdYmnDFaphP4AM5QJA_KwGUXv3_";
@@ -21,12 +23,26 @@
     let pendingStartData = null;
 
     function page(content) {
-      document.getElementById("app").innerHTML = `<main class="p-4 pb-24 max-w-4xl mx-auto">${content}</main>`;
+      document.getElementById("app").innerHTML = `<main class="p-4 pb-24 max-w-5xl mx-auto">${content}</main>`;
+    }
+
+    function topBar(title, subtitle = "") {
+      return `
+        <header class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h1 class="text-2xl font-bold">${title}</h1>
+              <p class="text-gray-400">${subtitle}</p>
+            </div>
+            <button onclick="renderLogin()" class="bg-gray-800 px-4 py-3 rounded-2xl text-sm">יציאה</button>
+          </div>
+        </header>`;
     }
 
     function fieldSelect(id, label, options) {
       return `<div><label class="block mb-2">${label}</label><select id="${id}" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700"><option value="">בחר</option>${options.map(o => `<option value="${o}">${o}</option>`).join("")}</select></div>`;
     }
+
     function fieldNumber(id, label) {
       return `<div><label class="block mb-2">${label}</label><input id="${id}" type="number" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700"></div>`;
     }
@@ -36,11 +52,14 @@
         <main class="min-h-screen flex items-center justify-center p-4">
           <section class="w-full max-w-md bg-gray-900 border border-gray-800 rounded-3xl p-6 shadow-2xl">
             <h1 class="text-3xl font-bold mb-2">DIGIPACK SMART FLOOR</h1>
-            <p class="text-gray-400 mb-6">למינציה 1 — כניסת עובד</p>
+            <p class="text-gray-400 mb-6">למינציה 1 — כניסה</p>
+
             <label class="block mb-2">עובד</label>
             <select id="employee" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700 mb-4"><option value="">בחר עובד</option></select>
+
             <label class="block mb-2">סיסמה</label>
             <input id="password" type="password" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700 mb-6" placeholder="הכנס סיסמה">
+
             <button onclick="login()" class="w-full bg-blue-600 p-4 rounded-2xl font-bold text-lg">כניסה</button>
             <p id="loginError" class="text-red-400 mt-4"></p>
           </section>
@@ -54,8 +73,10 @@
       if (error) { document.getElementById("loginError").innerText = "שגיאה בטעינת עובדים: " + error.message; return; }
       data.forEach(emp => {
         const option = document.createElement("option");
-        option.value = emp.id; option.textContent = emp.name;
-        option.dataset.password = emp.password; option.dataset.role = emp.role;
+        option.value = emp.id;
+        option.textContent = emp.name;
+        option.dataset.password = emp.password;
+        option.dataset.role = emp.role;
         select.appendChild(option);
       });
     }
@@ -66,43 +87,45 @@
       const password = document.getElementById("password").value;
       if (!selected.value) return document.getElementById("loginError").innerText = "בחר עובד";
       if (password !== selected.dataset.password) return document.getElementById("loginError").innerText = "סיסמה שגויה";
+
       currentEmployee = { id: selected.value, name: selected.textContent, role: selected.dataset.role };
-      renderStartForm();
+      if (currentEmployee.role === "manager") renderManager();
+      else renderStartForm();
     }
 
     function renderStartForm() {
       page(`
-        <header class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
-          <h1 class="text-2xl font-bold">פתיחת עבודת למינציה</h1>
-          <p class="text-gray-400">עובד: ${currentEmployee.name} | למינציה 1</p>
-        </header>
+        ${topBar("פתיחת עבודת למינציה", `עובד: ${currentEmployee.name} | למינציה 1`)}
         <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 space-y-4">
           <h2 class="text-xl font-bold">פרטי עבודה</h2>
-          <div><label class="block mb-2">מספר הזמנה</label><input id="orderNumber" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700" placeholder="לדוגמה: 0521-26"></div>
-          <div><label class="block mb-2">מספר אצווה</label><input id="batchNumber" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700" placeholder="הקלד מספר אצווה"></div>
-          <div><label class="block mb-2">צילום תווית חומר גלם</label><input id="labelPhoto" type="file" accept="image/*" capture="environment" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700"></div>
+
+          <div>
+            <label class="block mb-2">פק״ע</label>
+            <input id="pkaNumber" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700" placeholder="לדוגמה: 0521-26">
+          </div>
+
+          <div>
+            <label class="block mb-2">צילום תווית חומר גלם</label>
+            <input id="labelPhoto" type="file" accept="image/*" capture="environment" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700">
+          </div>
+
           <button onclick="goToStartQuality()" class="w-full bg-blue-600 p-4 rounded-2xl font-bold text-lg">המשך לטופס איכות לפני התחלה</button>
           <p id="startMsg" class="mt-4 text-yellow-300"></p>
         </section>`);
     }
 
     function goToStartQuality() {
-      const orderNumber = document.getElementById("orderNumber").value.trim();
-      const batchNumber = document.getElementById("batchNumber").value.trim();
+      const pkaNumber = document.getElementById("pkaNumber").value.trim();
       const file = document.getElementById("labelPhoto").files[0];
-      if (!orderNumber) return document.getElementById("startMsg").innerText = "חובה להזין מספר הזמנה";
-      if (!batchNumber) return document.getElementById("startMsg").innerText = "חובה להזין מספר אצווה";
+      if (!pkaNumber) return document.getElementById("startMsg").innerText = "חובה להזין פק״ע";
       if (!file) return document.getElementById("startMsg").innerText = "חובה לצלם תווית חומר גלם";
-      pendingStartData = { orderNumber, batchNumber, file };
+      pendingStartData = { pkaNumber, file };
       renderStartQuality();
     }
 
     function renderStartQuality() {
       page(`
-        <header class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
-          <h1 class="text-2xl font-bold">טופס איכות לפני תחילת עבודה</h1>
-          <p class="text-gray-400">הזמנה: ${pendingStartData.orderNumber} | אצווה: ${pendingStartData.batchNumber}</p>
-        </header>
+        ${topBar("טופס איכות לפני תחילת עבודה", `פק״ע: ${pendingStartData.pkaNumber}`)}
         <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 space-y-4">
           ${fieldSelect("laminate_direction", "כיוון למינט", ["קריא", "לא קריא"])}
           ${fieldSelect("raw_material_match", "התאמת חו״ג לפק״ע", ["כן", "לא"])}
@@ -117,8 +140,10 @@
           ${fieldNumber("work_speed", "מהירות עבודה — מטר/דקה")}
           ${fieldNumber("drum_temperature", "טמפ׳ תוף")}
           ${fieldNumber("inlet_drum_temperature", "טמפ׳ תוף כניסה")}
+
           <label class="block">הערות</label>
           <textarea id="comments" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700"></textarea>
+
           <button onclick="startJobWithQuality()" class="w-full bg-green-600 p-5 rounded-3xl text-xl font-bold">אשר איכות והתחל עבודה</button>
           <button onclick="renderStartForm()" class="w-full bg-gray-700 p-4 rounded-2xl font-bold">חזור</button>
           <p id="qualityMsg" class="mt-4 text-yellow-300"></p>
@@ -152,23 +177,28 @@
       const msg = document.getElementById("qualityMsg");
       let qualityPayload;
       try { qualityPayload = getQualityPayload(null); } catch(e) { msg.innerText = e.message; return; }
+
       const { data: job, error } = await client.from("jobs").insert({
-        order_number: pendingStartData.orderNumber,
+        order_number: pendingStartData.pkaNumber,
         employee_id: currentEmployee.id,
-        batch_number: pendingStartData.batchNumber,
+        batch_number: pendingStartData.pkaNumber,
         start_time: new Date().toISOString(),
         status: "open"
       }).select().single();
+
       if (error) { msg.innerText = "שגיאה ביצירת עבודה: " + error.message; return; }
+
       currentJob = job;
-      await saveLabel(pendingStartData.file, job.id, pendingStartData.batchNumber, "start");
+      await saveLabel(pendingStartData.file, job.id, pendingStartData.pkaNumber, "start");
+
       qualityPayload.job_id = job.id;
       const { error: qError } = await client.from("lamination_quality").insert(qualityPayload);
       if (qError) { msg.innerText = "שגיאה בשמירת איכות: " + qError.message; return; }
+
       renderActiveJob();
     }
 
-    async function saveLabel(file, jobId, batchNumber, labelType) {
+    async function saveLabel(file, jobId, pkaNumber, labelType) {
       const fileName = `${jobId}/${Date.now()}-${file.name}`;
       const { error: uploadError } = await client.storage.from("labels").upload(fileName, file);
       let imageUrl = "";
@@ -176,26 +206,25 @@
         const { data } = client.storage.from("labels").getPublicUrl(fileName);
         imageUrl = data.publicUrl;
       }
-      await client.from("material_labels").insert({ job_id: jobId, batch_number: batchNumber, label_type: labelType, image_url: imageUrl });
+      await client.from("material_labels").insert({ job_id: jobId, batch_number: pkaNumber, label_type: labelType, image_url: imageUrl });
     }
 
     function renderActiveJob() {
       page(`
-        <header class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
-          <h1 class="text-2xl font-bold">עבודה פעילה</h1>
-          <p class="text-gray-400">הזמנה: ${currentJob.order_number} | אצווה: ${currentJob.batch_number}</p>
-        </header>
+        ${topBar("עבודה פעילה", `פק״ע: ${currentJob.batch_number}`)}
         <section class="grid gap-4">
           <div class="bg-green-900/40 border border-green-700 rounded-3xl p-5">
             <h2 class="text-xl font-bold">למינציה 1 פעילה</h2>
             <p class="text-gray-300 mt-2">שעת התחלה: ${new Date(currentJob.start_time).toLocaleTimeString("he-IL")}</p>
           </div>
+
           <div class="bg-gray-900 border border-gray-800 rounded-3xl p-5">
             <h2 class="text-xl font-bold mb-4">טעינת גליל נוסף</h2>
             <input id="extraLabelPhoto" type="file" accept="image/*" capture="environment" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700 mb-4">
             <button onclick="addExtraRoll()" class="w-full bg-blue-600 p-4 rounded-2xl font-bold">צלם ושמור גליל נוסף</button>
             <p id="activeMsg" class="mt-4 text-yellow-300"></p>
           </div>
+
           <button onclick="renderFinishJob()" class="w-full bg-orange-500 p-5 rounded-3xl text-xl font-bold">סיום עבודה</button>
         </section>`);
     }
@@ -209,12 +238,12 @@
 
     function renderFinishJob() {
       page(`
-        <header class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
-          <h1 class="text-2xl font-bold">סיום עבודה</h1>
-          <p class="text-gray-400">הזמנה: ${currentJob.order_number}</p>
-        </header>
+        ${topBar("סיום עבודה", `פק״ע: ${currentJob.batch_number}`)}
         <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 space-y-4">
-          <div><label class="block mb-2">כמות מטרים למעבר לתחנה הבאה</label><input id="transferMeters" type="number" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700" placeholder="הזן מטרים"></div>
+          <div>
+            <label class="block mb-2">כמות מטרים למעבר לתחנה הבאה</label>
+            <input id="transferMeters" type="number" class="w-full p-4 rounded-2xl bg-gray-800 border border-gray-700" placeholder="הזן מטרים">
+          </div>
           <button onclick="finishJob()" class="w-full bg-green-600 p-5 rounded-3xl text-xl font-bold">סיים ושמור עבודה</button>
           <button onclick="renderActiveJob()" class="w-full bg-gray-700 p-4 rounded-2xl font-bold">חזור לעבודה פעילה</button>
           <p id="finishMsg" class="mt-4 text-yellow-300"></p>
@@ -230,7 +259,120 @@
         transfer_meters: Number(meters)
       }).eq("id", currentJob.id);
       if (error) return document.getElementById("finishMsg").innerText = "שגיאה בסגירת עבודה: " + error.message;
-      document.getElementById("app").innerHTML = `<main class="min-h-screen flex items-center justify-center p-4"><section class="bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center max-w-md"><h1 class="text-3xl font-bold text-green-400 mb-4">העבודה נסגרה בהצלחה</h1><p class="text-gray-300 mb-6">הנתונים נשמרו במערכת</p><button onclick="renderStartForm()" class="w-full bg-blue-600 p-4 rounded-2xl font-bold">פתח עבודה חדשה</button></section></main>`;
+
+      document.getElementById("app").innerHTML = `
+        <main class="min-h-screen flex items-center justify-center p-4">
+          <section class="bg-gray-900 border border-gray-800 rounded-3xl p-8 text-center max-w-md">
+            <h1 class="text-3xl font-bold text-green-400 mb-4">העבודה נסגרה בהצלחה</h1>
+            <p class="text-gray-300 mb-6">הנתונים נשמרו במערכת</p>
+            <button onclick="renderStartForm()" class="w-full bg-blue-600 p-4 rounded-2xl font-bold">פתח עבודה חדשה</button>
+          </section>
+        </main>`;
+    }
+
+    function periodDates(period) {
+      const now = new Date();
+      const start = new Date(now);
+      if (period === "today") start.setHours(0,0,0,0);
+      if (period === "yesterday") { start.setDate(start.getDate()-1); start.setHours(0,0,0,0); now.setDate(now.getDate()-1); now.setHours(23,59,59,999); }
+      if (period === "week") { const day = start.getDay(); start.setDate(start.getDate() - day); start.setHours(0,0,0,0); }
+      if (period === "month") { start.setDate(1); start.setHours(0,0,0,0); }
+      if (period === "year") { start.setMonth(0,1); start.setHours(0,0,0,0); }
+      return { start: start.toISOString(), end: now.toISOString() };
+    }
+
+    function renderManager() {
+      page(`
+        ${topBar("דוחות מנהלים", `מחובר: ${currentEmployee.name}`)}
+        <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
+          <h2 class="text-xl font-bold mb-4">בחירת תקופה</h2>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <button onclick="loadReport('today')" class="bg-blue-600 p-4 rounded-2xl font-bold">היום</button>
+            <button onclick="loadReport('yesterday')" class="bg-gray-700 p-4 rounded-2xl font-bold">אתמול</button>
+            <button onclick="loadReport('week')" class="bg-gray-700 p-4 rounded-2xl font-bold">שבוע</button>
+            <button onclick="loadReport('month')" class="bg-gray-700 p-4 rounded-2xl font-bold">חודש</button>
+            <button onclick="loadReport('year')" class="bg-gray-700 p-4 rounded-2xl font-bold">שנה</button>
+          </div>
+          <button onclick="exportExcel()" class="w-full mt-4 bg-green-600 p-4 rounded-2xl font-bold">הורד Excel</button>
+        </section>
+
+        <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 overflow-auto">
+          <h2 class="text-xl font-bold mb-4">דוח ביצוע</h2>
+          <div id="reportSummary" class="text-gray-300 mb-4"></div>
+          <div id="reportTable">בחר תקופה להצגת דוח</div>
+        </section>`);
+    }
+
+    let reportRows = [];
+
+    async function loadReport(period) {
+      const { start, end } = periodDates(period);
+      const { data: jobs, error } = await client
+        .from("jobs")
+        .select("*, employees(name), lamination_quality(*), material_labels(*)")
+        .gte("created_at", start)
+        .lte("created_at", end)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        document.getElementById("reportTable").innerHTML = `<p class="text-red-400">${error.message}</p>`;
+        return;
+      }
+
+      reportRows = jobs.map(job => {
+        const q = job.lamination_quality?.[0] || {};
+        const labels = job.material_labels || [];
+        return {
+          "תאריך": job.created_at ? new Date(job.created_at).toLocaleDateString("he-IL") : "",
+          "שעת התחלה": job.start_time ? new Date(job.start_time).toLocaleTimeString("he-IL") : "",
+          "שעת סיום": job.end_time ? new Date(job.end_time).toLocaleTimeString("he-IL") : "",
+          "שם מפעיל": job.employees?.name || "",
+          "תהליך": job.department || "למינציה",
+          "פק״ע": job.batch_number || job.order_number || "",
+          "מטרים להעברה": job.transfer_meters || "",
+          "כיוון למינט": q.laminate_direction || "",
+          "התאמת חו״ג": q.raw_material_match === true ? "כן" : q.raw_material_match === false ? "לא" : "",
+          "עובי": q.thickness || "",
+          "רוחב": q.width || "",
+          "פסיעה": q.pitch || "",
+          "ניקיון הדפסה": q.print_cleanliness || "",
+          "חומר": q.material_color || "",
+          "גימור": q.finish_type || "",
+          "חוזק למינציה": q.lamination_strength || "",
+          "חוזק הלחמה": q.sealing_strength || "",
+          "מהירות מטר/דקה": q.work_speed || "",
+          "טמפ׳ תוף": q.drum_temperature || "",
+          "טמפ׳ תוף כניסה": q.inlet_drum_temperature || "",
+          "הערות": q.comments || "",
+          "מספר תוויות": labels.length,
+          "קישור תווית חומר": labels[0]?.image_url || ""
+        };
+      });
+
+      document.getElementById("reportSummary").innerText = `נמצאו ${reportRows.length} רשומות`;
+      drawReportTable(reportRows);
+    }
+
+    function drawReportTable(rows) {
+      if (!rows.length) {
+        document.getElementById("reportTable").innerHTML = "אין נתונים לתקופה שנבחרה";
+        return;
+      }
+      const cols = Object.keys(rows[0]);
+      document.getElementById("reportTable").innerHTML = `
+        <table class="w-full text-sm border-collapse">
+          <thead><tr>${cols.map(c => `<th class="border border-gray-700 p-2 bg-gray-800 whitespace-nowrap">${c}</th>`).join("")}</tr></thead>
+          <tbody>${rows.map(r => `<tr>${cols.map(c => `<td class="border border-gray-700 p-2 whitespace-nowrap">${c.includes("קישור") && r[c] ? `<a class="text-blue-400 underline" href="${r[c]}" target="_blank">פתח</a>` : r[c]}</td>`).join("")}</tr>`).join("")}</tbody>
+        </table>`;
+    }
+
+    function exportExcel() {
+      if (!reportRows.length) { alert("אין נתונים לייצוא"); return; }
+      const ws = XLSX.utils.json_to_sheet(reportRows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "דוח מנהלים");
+      const today = new Date().toISOString().slice(0,10);
+      XLSX.writeFile(wb, `digipack-report-${today}.xlsx`);
     }
 
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/service-worker.js");
