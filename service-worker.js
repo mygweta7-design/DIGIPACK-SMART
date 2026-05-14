@@ -1,6 +1,3 @@
-self.addEventListener('install', event => {
-  event.waitUntil(caches.open('digipack-v4').then(cache => cache.addAll(['/', '/index.html', '/manifest.json'])));
-});
-self.addEventListener('fetch', event => {
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
-});
+self.addEventListener('install', e=>self.skipWaiting());
+self.addEventListener('activate', e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
+self.addEventListener('fetch', e=>e.respondWith(fetch(e.request,{cache:'no-store'})));

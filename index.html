@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DIGIPACK SMART FLOOR</title>
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="/manifest.json?v=6">
   <meta name="theme-color" content="#111827">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -317,17 +317,17 @@
 
     function renderManager() {
       page(`
-        ${topBar("דוח מנהלים", `מחובר: ${currentEmployee.name}`)}
+        ${topBar("דוח מנהלים", `מחובר: ${currentEmployee.name} | גרסה V6`)}
         <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
           <h2 class="text-xl font-bold mb-4">בחירת תקופה</h2>
           <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <button onclick="loadReport('today')" class="bg-blue-600 p-4 rounded-2xl font-bold">היום</button>
-            <button onclick="loadReport('yesterday')" class="bg-gray-700 p-4 rounded-2xl font-bold">אתמול</button>
-            <button onclick="loadReport('week')" class="bg-gray-700 p-4 rounded-2xl font-bold">שבוע</button>
-            <button onclick="loadReport('month')" class="bg-gray-700 p-4 rounded-2xl font-bold">חודש</button>
-            <button onclick="loadReport('year')" class="bg-gray-700 p-4 rounded-2xl font-bold">שנה</button>
+            <button type="button" onclick="window.loadReport('today')" class="bg-blue-600 p-4 rounded-2xl font-bold">היום</button>
+            <button type="button" onclick="window.loadReport('yesterday')" class="bg-gray-700 p-4 rounded-2xl font-bold">אתמול</button>
+            <button type="button" onclick="window.loadReport('week')" class="bg-gray-700 p-4 rounded-2xl font-bold">שבוע</button>
+            <button type="button" onclick="window.loadReport('month')" class="bg-gray-700 p-4 rounded-2xl font-bold">חודש</button>
+            <button type="button" onclick="window.loadReport('year')" class="bg-gray-700 p-4 rounded-2xl font-bold">שנה</button>
           </div>
-          <button onclick="exportExcel()" class="w-full mt-4 bg-green-600 p-4 rounded-2xl font-bold">פתח / הורד Excel</button>
+          <button type="button" onclick="window.exportExcel()" class="w-full mt-4 bg-green-600 p-4 rounded-2xl font-bold">פתח / הורד Excel</button>
           <p class="text-gray-400 text-sm mt-3">הדוח מוצג כאן באפליקציה. כפתור Excel יפתח או יוריד את הקובץ לפי הגדרות המכשיר.</p>
         </section>
 
@@ -395,7 +395,10 @@
       XLSX.writeFile(wb, `digipack-manager-report-${today}.xlsx`);
     }
 
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/service-worker.js");
+    window.loadReport = loadReport;
+    window.exportExcel = exportExcel;
+    window.renderLogin = renderLogin;
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/service-worker.js?v=6");
     renderLogin();
   </script>
 </body>
