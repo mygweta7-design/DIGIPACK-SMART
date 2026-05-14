@@ -21,6 +21,8 @@
     let currentEmployee = null;
     let currentJob = null;
     let pendingStartData = null;
+    let reportRows = [];
+    let currentPeriodName = "";
 
     function page(content) {
       document.getElementById("app").innerHTML = `<main class="p-4 pb-24 max-w-5xl mx-auto">${content}</main>`;
@@ -270,20 +272,52 @@
         </main>`;
     }
 
-    function periodDates(period) {
-      const now = new Date();
-      const start = new Date(now);
-      if (period === "today") start.setHours(0,0,0,0);
-      if (period === "yesterday") { start.setDate(start.getDate()-1); start.setHours(0,0,0,0); now.setDate(now.getDate()-1); now.setHours(23,59,59,999); }
-      if (period === "week") { const day = start.getDay(); start.setDate(start.getDate() - day); start.setHours(0,0,0,0); }
-      if (period === "month") { start.setDate(1); start.setHours(0,0,0,0); }
-      if (period === "year") { start.setMonth(0,1); start.setHours(0,0,0,0); }
-      return { start: start.toISOString(), end: now.toISOString() };
+    function getDateRange(period) {
+      const start = new Date();
+      const end = new Date();
+
+      if (period === "today") {
+        currentPeriodName = "היום";
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+      }
+
+      if (period === "yesterday") {
+        currentPeriodName = "אתמול";
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+      }
+
+      if (period === "week") {
+        currentPeriodName = "שבוע נוכחי";
+        const day = start.getDay(); // Sunday = 0
+        start.setDate(start.getDate() - day);
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+      }
+
+      if (period === "month") {
+        currentPeriodName = "חודש נוכחי";
+        start.setDate(1);
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+      }
+
+      if (period === "year") {
+        currentPeriodName = "שנה נוכחית";
+        start.setMonth(0,1);
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+      }
+
+      return { start: start.toISOString(), end: end.toISOString() };
     }
 
     function renderManager() {
       page(`
-        ${topBar("דוחות מנהלים", `מחובר: ${currentEmployee.name}`)}
+        ${topBar("דוח מנהלים", `מחובר: ${currentEmployee.name}`)}
         <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 mb-5">
           <h2 class="text-xl font-bold mb-4">בחירת תקופה</h2>
           <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -293,86 +327,72 @@
             <button onclick="loadReport('month')" class="bg-gray-700 p-4 rounded-2xl font-bold">חודש</button>
             <button onclick="loadReport('year')" class="bg-gray-700 p-4 rounded-2xl font-bold">שנה</button>
           </div>
-          <button onclick="exportExcel()" class="w-full mt-4 bg-green-600 p-4 rounded-2xl font-bold">הורד Excel</button>
+          <button onclick="exportExcel()" class="w-full mt-4 bg-green-600 p-4 rounded-2xl font-bold">פתח / הורד Excel</button>
+          <p class="text-gray-400 text-sm mt-3">הדוח מוצג כאן באפליקציה. כפתור Excel יפתח או יוריד את הקובץ לפי הגדרות המכשיר.</p>
         </section>
 
         <section class="bg-gray-900 border border-gray-800 rounded-3xl p-5 overflow-auto">
           <h2 class="text-xl font-bold mb-4">דוח ביצוע</h2>
-          <div id="reportSummary" class="text-gray-300 mb-4"></div>
-          <div id="reportTable">בחר תקופה להצגת דוח</div>
+          <div id="reportSummary" class="text-gray-300 mb-4">בחר תקופה להצגת דוח</div>
+          <div id="reportTable"></div>
         </section>`);
+      loadReport("today");
     }
 
-    let reportRows = [];
-
     async function loadReport(period) {
-      const { start, end } = periodDates(period);
+      const { start, end } = getDateRange(period);
+      document.getElementById("reportSummary").innerText = "טוען דוח...";
       const { data: jobs, error } = await client
         .from("jobs")
-        .select("*, employees(name), lamination_quality(*), material_labels(*)")
+        .select("*, employees(name), material_labels(*)")
         .gte("created_at", start)
         .lte("created_at", end)
         .order("created_at", { ascending: false });
 
       if (error) {
         document.getElementById("reportTable").innerHTML = `<p class="text-red-400">${error.message}</p>`;
+        document.getElementById("reportSummary").innerText = "שגיאה בטעינת דוח";
         return;
       }
 
       reportRows = jobs.map(job => {
-        const q = job.lamination_quality?.[0] || {};
         const labels = job.material_labels || [];
+        const firstLabel = labels[0]?.image_url || "";
         return {
           "תאריך": job.created_at ? new Date(job.created_at).toLocaleDateString("he-IL") : "",
-          "שעת התחלה": job.start_time ? new Date(job.start_time).toLocaleTimeString("he-IL") : "",
           "שעת סיום": job.end_time ? new Date(job.end_time).toLocaleTimeString("he-IL") : "",
           "שם מפעיל": job.employees?.name || "",
           "תהליך": job.department || "למינציה",
           "פק״ע": job.batch_number || job.order_number || "",
-          "מטרים להעברה": job.transfer_meters || "",
-          "כיוון למינט": q.laminate_direction || "",
-          "התאמת חו״ג": q.raw_material_match === true ? "כן" : q.raw_material_match === false ? "לא" : "",
-          "עובי": q.thickness || "",
-          "רוחב": q.width || "",
-          "פסיעה": q.pitch || "",
-          "ניקיון הדפסה": q.print_cleanliness || "",
-          "חומר": q.material_color || "",
-          "גימור": q.finish_type || "",
-          "חוזק למינציה": q.lamination_strength || "",
-          "חוזק הלחמה": q.sealing_strength || "",
-          "מהירות מטר/דקה": q.work_speed || "",
-          "טמפ׳ תוף": q.drum_temperature || "",
-          "טמפ׳ תוף כניסה": q.inlet_drum_temperature || "",
-          "הערות": q.comments || "",
-          "מספר תוויות": labels.length,
-          "קישור תווית חומר": labels[0]?.image_url || ""
+          "כמות מטרים להעברה": job.transfer_meters || "",
+          "קישור לתווית חומר": firstLabel
         };
       });
 
-      document.getElementById("reportSummary").innerText = `נמצאו ${reportRows.length} רשומות`;
+      document.getElementById("reportSummary").innerText = `${currentPeriodName}: נמצאו ${reportRows.length} רשומות`;
       drawReportTable(reportRows);
     }
 
     function drawReportTable(rows) {
+      const cols = ["תאריך", "שעת סיום", "שם מפעיל", "תהליך", "פק״ע", "כמות מטרים להעברה", "קישור לתווית חומר"];
       if (!rows.length) {
         document.getElementById("reportTable").innerHTML = "אין נתונים לתקופה שנבחרה";
         return;
       }
-      const cols = Object.keys(rows[0]);
       document.getElementById("reportTable").innerHTML = `
         <table class="w-full text-sm border-collapse">
           <thead><tr>${cols.map(c => `<th class="border border-gray-700 p-2 bg-gray-800 whitespace-nowrap">${c}</th>`).join("")}</tr></thead>
-          <tbody>${rows.map(r => `<tr>${cols.map(c => `<td class="border border-gray-700 p-2 whitespace-nowrap">${c.includes("קישור") && r[c] ? `<a class="text-blue-400 underline" href="${r[c]}" target="_blank">פתח</a>` : r[c]}</td>`).join("")}</tr>`).join("")}</tbody>
+          <tbody>${rows.map(r => `<tr>${cols.map(c => `<td class="border border-gray-700 p-2 whitespace-nowrap">${c.includes("קישור") && r[c] ? `<a class="text-blue-400 underline" href="${r[c]}" target="_blank">פתח</a>` : (r[c] || "")}</td>`).join("")}</tr>`).join("")}</tbody>
         </table>`;
     }
 
     function exportExcel() {
       if (!reportRows.length) { alert("אין נתונים לייצוא"); return; }
-      const ws = XLSX.utils.json_to_sheet(reportRows);
+      const ws = XLSX.utils.json_to_sheet(reportRows, { header: ["תאריך", "שעת סיום", "שם מפעיל", "תהליך", "פק״ע", "כמות מטרים להעברה", "קישור לתווית חומר"] });
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "דוח מנהלים");
+      XLSX.utils.book_append_sheet(wb, ws, "דוח מנהל");
       const today = new Date().toISOString().slice(0,10);
-      XLSX.writeFile(wb, `digipack-report-${today}.xlsx`);
+      XLSX.writeFile(wb, `digipack-manager-report-${today}.xlsx`);
     }
 
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/service-worker.js");
